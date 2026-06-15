@@ -1,6 +1,37 @@
 <template>
   <div class="story-detail">
-    <div class="container">
+    <div v-if="immersiveMode" class="immersive-reader">
+      <div class="immersive-header">
+        <button class="immersive-back-btn" @click="exitImmersiveMode">
+          ← 返回详情
+        </button>
+        <div class="immersive-title">{{ story.title }}</div>
+        <div class="immersive-progress">
+          {{ readingProgress }}%
+        </div>
+      </div>
+      <div class="immersive-content" @scroll="updateReadingProgress" ref="immersiveContentRef">
+        <div class="immersive-text">
+          <p
+            v-for="(entry, idx) in story.entries"
+            :key="entry.id"
+            class="immersive-paragraph"
+          >
+            <span v-if="idx === 0" class="first-letter">{{ entry.content.charAt(0) }}</span>{{ idx === 0 ? entry.content.slice(1) : entry.content }}
+          </p>
+        </div>
+        <div class="immersive-end">
+          <div class="immersive-end-line"></div>
+          <p v-if="story.locked" class="immersive-end-text">— 全文完 —</p>
+          <p v-else class="immersive-end-text">— 故事还在继续，敬请期待 —</p>
+          <button class="btn-primary" @click="exitImmersiveMode">
+            回到接龙详情
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-else class="container">
       <div class="back-bar">
         <router-link to="/" class="back-link">← 返回故事广场</router-link>
       </div>
@@ -19,11 +50,16 @@
         <header class="story-header card">
           <div class="header-top">
             <h1 class="story-title">{{ story.title }}</h1>
-            <span
-              :class="['tag', story.locked ? 'tag-success' : 'tag-warning']"
-            >
-              {{ story.locked ? '已完结' : '接龙中' }}
-            </span>
+            <div class="header-actions">
+              <span
+                :class="['tag', story.locked ? 'tag-success' : 'tag-warning']"
+              >
+                {{ story.locked ? '已完结' : '接龙中' }}
+              </span>
+              <button class="btn-secondary btn-sm" @click="enterImmersiveMode">
+                📖 沉浸阅读
+              </button>
+            </div>
           </div>
           <div v-if="story.locked && story.lockedReason" class="lock-reason">
             🔒 {{ story.lockedReason }}
@@ -170,6 +206,10 @@ const submitting = ref(false)
 const submitError = ref('')
 const form = ref({ author: '', content: '' })
 const chatListRef = ref(null)
+const immersiveMode = ref(false)
+const immersiveContentRef = ref(null)
+const readingProgress = ref(0)
+const lastScrollPosition = ref(0)
 
 const progressPct = computed(() => {
   if (!story.value) return 0
@@ -246,6 +286,36 @@ function scrollToBottom() {
 
 function scrollToTop() {
   window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+function enterImmersiveMode() {
+  lastScrollPosition.value = window.scrollY
+  immersiveMode.value = true
+  readingProgress.value = 0
+  document.body.style.overflow = 'hidden'
+  nextTick(() => {
+    if (immersiveContentRef.value) {
+      immersiveContentRef.value.scrollTop = 0
+    }
+  })
+}
+
+function exitImmersiveMode() {
+  immersiveMode.value = false
+  document.body.style.overflow = ''
+  nextTick(() => {
+    window.scrollTo({ top: lastScrollPosition.value, behavior: 'auto' })
+  })
+}
+
+function updateReadingProgress() {
+  if (!immersiveContentRef.value) return
+  const el = immersiveContentRef.value
+  const scrollTop = el.scrollTop
+  const scrollHeight = el.scrollHeight - el.clientHeight
+  if (scrollHeight > 0) {
+    readingProgress.value = Math.min(100, Math.round((scrollTop / scrollHeight) * 100))
+  }
 }
 
 watch(() => route.params.id, loadStory)
@@ -535,6 +605,167 @@ onMounted(loadStory)
   }
   .bubble-wrapper {
     max-width: calc(100% - 48px);
+  }
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.immersive-reader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #fefdf9;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+}
+
+.immersive-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: #fefdf9;
+  border-bottom: 1px solid #f0ede5;
+  flex-shrink: 0;
+}
+
+.immersive-back-btn {
+  background: transparent;
+  border: 1px solid #d4cfc3;
+  color: #5c5850;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.immersive-back-btn:hover {
+  background: #f5f2eb;
+  border-color: #c4bfb3;
+}
+
+.immersive-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #3d3a34;
+}
+
+.immersive-progress {
+  font-size: 14px;
+  color: #8a857a;
+  font-weight: 500;
+  min-width: 50px;
+  text-align: right;
+}
+
+.immersive-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 40px 24px;
+}
+
+.immersive-text {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.immersive-paragraph {
+  font-size: 18px;
+  line-height: 2;
+  color: #2d2b26;
+  margin-bottom: 28px;
+  text-indent: 2em;
+  text-align: justify;
+}
+
+.first-letter {
+  float: left;
+  font-size: 56px;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--primary);
+  margin-right: 8px;
+  margin-top: 6px;
+  font-family: 'Georgia', serif;
+}
+
+.immersive-end {
+  max-width: 720px;
+  margin: 60px auto 40px;
+  text-align: center;
+}
+
+.immersive-end-line {
+  width: 60px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--primary), transparent);
+  margin: 0 auto 24px;
+}
+
+.immersive-end-text {
+  font-size: 16px;
+  color: #8a857a;
+  margin-bottom: 24px;
+  letter-spacing: 2px;
+}
+
+.immersive-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.immersive-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.immersive-content::-webkit-scrollbar-thumb {
+  background: #d4cfc3;
+  border-radius: 3px;
+}
+
+.immersive-content::-webkit-scrollbar-thumb:hover {
+  background: #c4bfb3;
+}
+
+@media (max-width: 640px) {
+  .immersive-header {
+    padding: 12px 16px;
+  }
+  
+  .immersive-title {
+    font-size: 15px;
+  }
+  
+  .immersive-back-btn {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+  
+  .immersive-content {
+    padding: 24px 16px;
+  }
+  
+  .immersive-paragraph {
+    font-size: 16px;
+    line-height: 1.9;
+    margin-bottom: 20px;
+  }
+  
+  .first-letter {
+    font-size: 44px;
+  }
+  
+  .header-actions {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
   }
 }
 </style>
